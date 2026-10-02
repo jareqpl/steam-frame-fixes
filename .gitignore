@@ -1,0 +1,9 @@
+# Build trees and outputs (scripts/build-*.sh, scripts/package.sh)
+/build/
+/out/
+*.tar.xz
+SHA256SUMS
+
+# Python
+__pycache__/
+*.pyc
