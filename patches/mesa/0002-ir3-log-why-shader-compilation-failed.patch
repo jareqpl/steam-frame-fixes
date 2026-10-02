@@ -1,0 +1,67 @@
+From 3635381bffd4f6b850fe0d2e62d3f8650a274c26 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jaros=C5=82aw=20Mrowiec?= <1174970+jareqpl@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 23:56:18 +0200
+Subject: [PATCH 2/2] ir3: log why shader compilation failed
+
+In release builds DBG() compiles to nothing, so an INIT/EMIT/SCHED
+failure only shows up as "compile failed!" from ir3_shader.c, and a
+scheduler deadlock (nothing schedulable that is not an a0/a1 conflict)
+is completely silent once assert(0) is compiled out. Log these at error
+level so failures on user devices can be attributed to a pass.
+
+Diagnostic only; no functional change.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ src/freedreno/ir3/ir3_compiler_nir.c | 6 +++---
+ src/freedreno/ir3/ir3_sched.c        | 3 +++
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/src/freedreno/ir3/ir3_compiler_nir.c b/src/freedreno/ir3/ir3_compiler_nir.c
+index 2ba32d8..8ef7ae7 100644
+--- a/src/freedreno/ir3/ir3_compiler_nir.c
++++ b/src/freedreno/ir3/ir3_compiler_nir.c
+@@ -5850,7 +5850,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
+ 
+    ctx = ir3_context_init(compiler, shader, so);
+    if (!ctx) {
+-      DBG("INIT failed!");
++      mesa_loge("ir3: init failed for %s shader", ir3_shader_stage(so));
+       ret = -1;
+       goto out;
+    }
+@@ -5860,7 +5860,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
+    emit_instructions(ctx);
+ 
+    if (ctx->error) {
+-      DBG("EMIT failed!");
++      mesa_loge("ir3: emit failed for %s shader", ir3_shader_stage(so));
+       ret = -1;
+       goto out;
+    }
+@@ -6126,7 +6126,7 @@ ir3_compile_shader_nir(struct ir3_compiler *compiler,
+ 
+    ret = ir3_sched(ir);
+    if (ret) {
+-      DBG("SCHED failed!");
++      mesa_loge("ir3: sched failed for %s shader", ir3_shader_stage(so));
+       goto out;
+    }
+ 
+diff --git a/src/freedreno/ir3/ir3_sched.c b/src/freedreno/ir3/ir3_sched.c
+index 3f7bb6f..9f7db0e 100644
+--- a/src/freedreno/ir3/ir3_sched.c
++++ b/src/freedreno/ir3/ir3_sched.c
+@@ -1260,6 +1260,9 @@ sched_block(struct ir3_sched_ctx *ctx, struct ir3_block *block)
+             d("unscheduled_list:\n");
+             foreach_instr (instr, &ctx->unscheduled_list)
+                di(instr, "unscheduled: ");
++            mesa_loge("ir3_sched: deadlock, nothing schedulable in block%u "
++                      "(%u instructions left)", block_id(block),
++                      list_length(&ctx->unscheduled_list));
+             assert(0);
+             ctx->error = true;
+             return;
+-- 
+2.43.0
+

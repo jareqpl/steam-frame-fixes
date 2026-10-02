@@ -1,0 +1,76 @@
+From ea2cbf69a728f6820cc64e42d1c2a055065133c6 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jaros=C5=82aw=20Mrowiec?= <1174970+jareqpl@users.noreply.github.com>
+Date: Thu, 24 Sep 2026 23:56:14 +0200
+Subject: [PATCH 1/2] tu: fail pipeline creation when ir3 shader compilation
+ fails
+
+ir3_shader_create_variant() returns NULL when ir3 fails to compile or
+assemble a shader, but tu_shader_create() passed the result straight to
+ir3_exceeds_safe_constlen() and later dereferenced it, so a compiler
+failure turned into a segfault (read of NULL + offsetof(binning_pass))
+inside vkCreateGraphicsPipelines.
+
+Seen with World of Warcraft (native ARM64 client, vkd3d-proton and DXVK)
+on Adreno 750:
+
+  MESA: error: compile failed! ((null):(null))
+  err:vulkan:vkCreateGraphicsPipelines Exception 0xc0000005 in Unix call.
+
+Check both the regular and the safe-constlen variant, free what was
+created and return VK_ERROR_UNKNOWN instead, so the application gets an
+error instead of a crash. The nir shader is owned (and freed) by the
+ir3_shader, so remember the stage for the error message beforehand.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ src/freedreno/vulkan/tu_shader.cc | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/src/freedreno/vulkan/tu_shader.cc b/src/freedreno/vulkan/tu_shader.cc
+index 4fb42f2..3df2aeb 100644
+--- a/src/freedreno/vulkan/tu_shader.cc
++++ b/src/freedreno/vulkan/tu_shader.cc
+@@ -3677,22 +3677,39 @@ tu_shader_create(struct tu_device *dev,
+       .nir_options = nir_options,
+    };
+ 
++   /* ir3_shader_destroy() below also frees the nir shader */
++   const mesa_shader_stage stage = nir->info.stage;
++
+    struct ir3_shader *ir3_shader =
+       ir3_shader_from_nir(dev->compiler, nir, &options);
+ 
+    shader->variant =
+       ir3_shader_create_variant(ir3_shader, ir3_key, executable_info);
+ 
+-   if (ir3_exceeds_safe_constlen(shader->variant)) {
++   if (shader->variant && ir3_exceeds_safe_constlen(shader->variant)) {
+       struct ir3_shader_key safe_constlen_key = *ir3_key;
+       safe_constlen_key.safe_constlen = true;
+       shader->safe_const_variant =
+          ir3_shader_create_variant(ir3_shader, &safe_constlen_key,
+                                    executable_info);
++      if (!shader->safe_const_variant) {
++         ralloc_free((void *)shader->variant);
++         shader->variant = NULL;
++      }
+    }
+ 
+    ir3_shader_destroy(ir3_shader);
+ 
++   /* ir3 failed to compile or assemble the shader (e.g. RA failure or an
++    * unsupported construct). Fail pipeline creation instead of dereferencing
++    * a NULL variant below.
++    */
++   if (!shader->variant) {
++      vk_free(&dev->vk.alloc, shader);
++      return vk_errorf(dev, VK_ERROR_UNKNOWN, "failed to compile %s shader",
++                       _mesa_shader_stage_to_string(stage));
++   }
++
+    shader->view_mask = key->multiview_mask;
+ 
+    switch (shader->variant->type) {
+-- 
+2.43.0
+

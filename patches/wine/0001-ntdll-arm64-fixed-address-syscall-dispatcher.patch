@@ -1,0 +1,71 @@
+From 373392b7363b1eef81cb50f288dca4066125022d Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jaros=C5=82aw=20Mrowiec?= <1174970+jareqpl@users.noreply.github.com>
+Date: Fri, 2 Oct 2026 11:57:23 +0000
+Subject: [PATCH] ntdll: Use a fixed address for the syscall dispatcher pointer
+ on aarch64.
+
+The aarch64 syscall thunks load the address of __wine_syscall_dispatcher
+through a literal that points to a variable in ntdll's data section.
+Applications that execute the thunks from their own copy of ntdll (for
+example the anti-tamper code of the native ARM64 World of Warcraft
+client) see that variable as zero, so the thunk branches to address 0
+and the process crashes (c0000005 with pc=0, x16=0).
+
+x86_64 avoids this by storing the dispatcher pointer at the fixed
+address 0x7ffe1000, right after the user shared data page. Do the same
+on aarch64: map that page in signal_init_process() and make the thunks
+load the dispatcher pointer from it.
+
+See also https://github.com/StevenMXZ/Winlator-Ludashi/issues/632.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ dlls/ntdll/unix/signal_arm64.c | 8 ++++++++
+ include/wine/asm.h             | 2 +-
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/dlls/ntdll/unix/signal_arm64.c b/dlls/ntdll/unix/signal_arm64.c
+index 17280b3..8ec1474 100644
+--- a/dlls/ntdll/unix/signal_arm64.c
++++ b/dlls/ntdll/unix/signal_arm64.c
+@@ -33,6 +33,7 @@
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <sys/types.h>
++#include <sys/mman.h>
+ #include <unistd.h>
+ #ifdef HAVE_SYS_PARAM_H
+ # include <sys/param.h>
+@@ -1543,9 +1544,16 @@ void signal_init_process(void)
+     struct sigaction sig_act;
+     struct ntdll_thread_data *thread_data = ntdll_get_thread_data();
+     void *kernel_stack = (char *)thread_data->kernel_stack + kernel_stack_size;
++    void *ptr;
+ 
+     thread_data->syscall_frame = (struct syscall_frame *)kernel_stack - 1;
+ 
++    /* sneak in a syscall dispatcher pointer at a fixed address (7ffe1000), as on x86_64,
++     * so that copies of the syscall thunks made by the application keep working */
++    ptr = (char *)user_shared_data + page_size;
++    anon_mmap_fixed( ptr, page_size, PROT_READ | PROT_WRITE, 0 );
++    *(void **)ptr = __wine_syscall_dispatcher;
++
+     signal_alloc_thread( NtCurrentTeb() );
+ 
+     sig_act.sa_mask = server_block_set;
+diff --git a/include/wine/asm.h b/include/wine/asm.h
+index 172d7c8..2a07500 100644
+--- a/include/wine/asm.h
++++ b/include/wine/asm.h
+@@ -253,7 +253,7 @@
+                        "ldr x16, [x16]\n\t" \
+                        "blr x16\n\t" \
+                        "ret\n" \
+-                       "1:\t.quad " __ASM_NAME("__wine_syscall_dispatcher") )
++                       "1:\t.quad 0x7ffe1000" ) /* fixed address, see signal_init_process() */
+ #elif defined __arm64ec__
+ # define __ASM_SYSCALL_FUNC(id,name) \
+     asm( ".seh_proc \"#" #name "$hp_target\"\n\t" \
+-- 
+2.43.0
+
