@@ -1,6 +1,7 @@
 # Build trees and outputs (scripts/build-*.sh, scripts/package.sh)
 /build/
 /out/
+/dist/
 *.tar.xz
 SHA256SUMS
 
