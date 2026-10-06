@@ -67,15 +67,21 @@ It then prints the remaining steps:
 
    Keep anything you already had there (for example `PROTON_LOG=1`) in front of `%command%`.
 
-Steps 2 and 3 can be done by the installer instead. Exit Steam completely first, then run:
+Steps 2 and 3 can be done by the installer instead:
 
-```bash
-bash install.sh --set-compat-tool --set-launch-options
-```
+1. In Steam, rename the game's shortcut to **`WoW Forever`** (right-click it > Properties, the name field at
+   the top).
+2. Exit Steam completely (Steam menu > Exit).
+3. Run:
 
-It changes only non-Steam shortcuts whose executable or name contains `ARM64.exe` or `World of Warcraft`
-(use `--match TEXT` for others), shows the changes and asks before writing. A backup of each changed Steam
-file is kept next to it.
+   ```bash
+   bash ~/.local/share/steam-frame-fixes/install.sh --set-compat-tool --set-launch-options
+   ```
+
+It changes only the non-Steam shortcut with exactly that name (not case-sensitive), shows the changes and asks
+before writing. A backup of each changed Steam file is kept next to it. To use another name, add
+`--shortcut-name "Your Name"`. Renaming the shortcut afterwards is fine: `--uninstall` remembers which
+shortcut it changed.
 
 Other options:
 
@@ -108,7 +114,8 @@ driver of every game and show two Adreno 750 devices.
    (beta) it is `_classic_beta_/WowB-ARM64.exe` in the game folder. Other variants have similar names
    (e.g. `Wow-ARM64.exe`).
    <!-- TODO(author): exact executable names of the other WoW variants. Reports welcome. -->
-3. Set the compatibility tool and launch options as described in [Installation](#installation).
+3. Name that shortcut `WoW Forever` and set the compatibility tool and launch options as described in
+   [Installation](#installation) (by hand, or with `--set-compat-tool --set-launch-options`).
 4. Started without Battle.net, the game first shows a language and region selection window.
 
 <!-- TODO(author): is a Config.wtf copied from a PC needed? Believed not, but not verified on a clean prefix. -->

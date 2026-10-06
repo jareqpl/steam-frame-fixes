@@ -11,7 +11,7 @@ Python 3 standard library only (SteamOS has no pip). Safety rules:
   * nothing is changed while Steam is running (Steam rewrites these files on exit).
 
 Commands (run with --help for details):
-  list                  list shortcuts (optionally only those matching --match)
+  list                  list shortcuts (optionally only those selected by --name/--match)
   set-launch-options    add environment variables in front of %command% in LaunchOptions
   unset-launch-options  remove those variables again
   set-compat-tool       map shortcut appids to a compatibility tool in config.vdf
@@ -197,11 +197,17 @@ class Shortcut:
         crc = zlib.crc32((self.exe + self.name).encode("utf-8", "surrogateescape"))
         return (crc | 0x80000000) & 0xFFFFFFFF
 
-    def matches(self, patterns) -> bool:
-        if not patterns:
+    def matches(self, patterns=(), names=(), appids=()) -> bool:
+        """Selected by appid, by an exact name (case-insensitive, surrounding spaces ignored) or by a
+        case-insensitive substring of Exe or AppName. Without any criteria every shortcut matches."""
+        if not patterns and not names and not appids:
             return True
-        hay = (self.exe + "\n" + self.name).lower()
-        return any(p.lower() in hay for p in patterns)
+        if self.appid in appids:
+            return True
+        if any(n.strip().casefold() == self.name.strip().casefold() for n in names):
+            return True
+        hay = (self.exe + "\n" + self.name).casefold()
+        return any(p.casefold() in hay for p in patterns)
 
     def as_dict(self) -> dict:
         return {"index": self.index_key, "appid": self.appid, "name": self.name,
@@ -581,7 +587,7 @@ def _print_shortcut(s: Shortcut) -> None:
 
 def cmd_list(args) -> int:
     _, root = load_shortcuts(args.shortcuts)
-    found = [s for s in shortcuts_of(root) if s.matches(args.match)]
+    found = [s for s in shortcuts_of(root) if s.matches(args.match, args.name, args.appid)]
     if args.format == "json":
         print(json.dumps([s.as_dict() for s in found], indent=2, ensure_ascii=False))
     elif args.format == "appid":
@@ -590,13 +596,15 @@ def cmd_list(args) -> int:
     else:
         for s in found:
             _print_shortcut(s)
-    return 0 if found or not args.match else 3
+    return 0 if found or not (args.match or args.name or args.appid) else 3
 
 
 def _edit_launch_options(args, transform) -> int:
+    if not args.match and not args.name and not args.appid:
+        raise Abort("select shortcuts with --name, --match or --appid")
     _check_not_running(args)
     data, root = load_shortcuts(args.shortcuts)
-    targets = [s for s in shortcuts_of(root) if s.matches(args.match)]
+    targets = [s for s in shortcuts_of(root) if s.matches(args.match, args.name, args.appid)]
     if not targets:
         print("No matching shortcuts.", file=sys.stderr)
         return 3
@@ -688,6 +696,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="command", required=True)
 
+    def add_selection(sp):
+        sp.add_argument("--name", action="append", default=[],
+                        help="exact shortcut name, case-insensitive (repeatable)")
+        sp.add_argument("--match", action="append", default=[],
+                        help="case-insensitive substring of Exe or AppName (repeatable)")
+        sp.add_argument("--appid", type=_appid, action="append", default=[],
+                        help="shortcut appid, as printed by list (repeatable)")
+
     def common_edit(sp):
         sp.add_argument("--yes", action="store_true", help="do not ask for confirmation")
         sp.add_argument("--dry-run", action="store_true", help="only show what would change")
@@ -696,8 +712,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("list", help="list shortcuts")
     sp.add_argument("--shortcuts", required=True, help="path to userdata/<id>/config/shortcuts.vdf")
-    sp.add_argument("--match", action="append", default=[],
-                    help="case-insensitive substring of Exe or AppName (repeatable, any matches)")
+    add_selection(sp)
     sp.add_argument("--format", choices=("text", "json", "appid"), default="text")
     sp.set_defaults(func=cmd_list)
 
@@ -708,8 +723,7 @@ def build_parser() -> argparse.ArgumentParser:
              "NAME (or NAME=value) to remove (repeatable)")):
         sp = sub.add_parser(name, help=cmd_help)
         sp.add_argument("--shortcuts", required=True)
-        sp.add_argument("--match", action="append", required=True,
-                        help="case-insensitive substring of Exe or AppName (repeatable)")
+        add_selection(sp)
         sp.add_argument("--env", action="append", default=[], help=env_help)
         common_edit(sp)
         sp.set_defaults(func=func)

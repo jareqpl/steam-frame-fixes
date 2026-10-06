@@ -78,7 +78,9 @@ import sys
 sys.path.insert(0, "$REPO_ROOT/tools/tests")
 import test_steam_shortcuts as t
 steam, wow = sys.argv[1], sys.argv[2]
-open(steam + "/userdata/1234/config/shortcuts.vdf", "wb").write(t.sample_shortcuts())
+# the user renamed the WoW shortcut to the installer's default shortcut name
+data = t.sample_shortcuts().replace(b"World of Warcraft Classic Beta (ARM64)", b"WoW Forever")
+open(steam + "/userdata/1234/config/shortcuts.vdf", "wb").write(data)
 open(steam + "/userdata/5678/config/shortcuts.vdf", "wb").write(t.m("shortcuts") + b"\x08")
 # the WoW shortcut is already mapped to another Proton, which uninstall must restore
 open(steam + "/config/config.vdf", "w").write(t.CONFIG_VDF.replace("2343328086", wow))
@@ -147,6 +149,14 @@ grep -q "checksum mismatch" "$T/log" || fail "no checksum message"
 [[ ! -e "$H4/.local/share/steam-frame-fixes" ]] || fail "partial install after checksum failure"
 ok "refuses archives with a wrong checksum"
 
+if run_install "$H" --from-dir "$T/dist" --set-launch-options --shortcut-name "No Such Game" --yes > "$T/log" 2>&1; then
+    fail "succeeded without a matching shortcut"
+fi
+grep -q 'no non-Steam shortcut named "No Such Game" found' "$T/log" || fail "no missing-shortcut message"
+grep -q 'set its name to' "$T/log" || fail "no rename instructions"
+cmp -s "$SHORTCUTS" "$T/shortcuts.orig" || fail "shortcuts changed without a matching shortcut"
+ok "explains how to name the shortcut when none matches"
+
 mkdir -p "$T/fakebin"
 cat > "$T/fakebin/pgrep" <<'EOF'
 #!/bin/sh
@@ -164,14 +174,18 @@ ok "refuses to change Steam files while Steam is running"
 
 run_install "$H" --from-dir "$T/dist" --set-launch-options --set-compat-tool --yes > "$T/log" 2>&1 \
     || { cat "$T/log"; fail "--set-launch-options --set-compat-tool"; }
-opts="$(python3 "$DATA/steam_shortcuts.py" list --shortcuts "$SHORTCUTS" --match ARM64.exe --format json \
+opts="$(python3 "$DATA/steam_shortcuts.py" list --shortcuts "$SHORTCUTS" --name "WoW Forever" --format json \
         | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["launch_options"])')"
 [[ "$opts" == "VK_ICD_FILENAMES=$ICD VK_DRIVER_FILES=$ICD PROTON_LOG=1 %command% -console" ]] \
     || fail "launch options: $opts"
 grep -A2 "\"$WOW_APPID\"" "$CONFIG" | grep -q '"proton_frame_fixes"' || fail "compat tool not set"
 grep -q "^compat $WOW_APPID proton_10$" "$DATA/state" || fail "previous compat tool not recorded"
-grep -qF "already set for the matching shortcuts" "$T/log" || fail "summary does not mention the launch options"
-ok "--set-launch-options and --set-compat-tool update the matching shortcut"
+grep -qF 'already set for the shortcut named "WoW Forever"' "$T/log" || fail "summary does not mention the launch options"
+bnet="$(python3 "$DATA/steam_shortcuts.py" list --shortcuts "$SHORTCUTS" --name Battle.net --format json \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["launch_options"])')"
+[[ -z "$bnet" ]] || fail "other shortcut changed: $bnet"
+grep -q "^launch $WOW_APPID $SHORTCUTS$" "$DATA/state" || fail "launch change not recorded by appid"
+ok "--set-launch-options and --set-compat-tool update only the shortcut named \"WoW Forever\""
 
 run_install "$H" --from-dir "$T/dist" --set-launch-options --set-compat-tool --yes > "$T/log" 2>&1 || fail "repeat"
 [[ "$(grep -c "^compat $WOW_APPID " "$DATA/state")" -eq 1 ]] || fail "state recorded twice"
@@ -202,5 +216,21 @@ ok "--uninstall removes the files and restores shortcuts.vdf and config.vdf exac
 HOME="$H2" bash "$REPO_ROOT/install.sh" --uninstall > "$T/log" 2>&1 || fail "uninstall without Steam changes"
 [[ ! -e "$H2/.local/share/steam-frame-fixes" ]] || fail "uninstall left files"
 ok "--uninstall works when no Steam files were changed"
+
+# --match instead of a name, then the user renames the shortcut before uninstalling
+S3="$H3/.local/share/Steam/userdata/1234/config/shortcuts.vdf"
+run_install "$H3" --version "$VERSION" --set-launch-options --match ARM64.exe --yes > "$T/log" 2>&1 \
+    || { cat "$T/log"; fail "--match"; }
+python3 - "$S3" <<'EOF2'
+import sys
+p = sys.argv[1]
+data = open(p, "rb").read()
+open(p, "wb").write(data.replace(b"WoW Forever", b"Renamed WoW"))
+EOF2
+HOME="$H3" bash "$H3/.local/share/steam-frame-fixes/install.sh" --uninstall > "$T/log" 2>&1 || { cat "$T/log"; fail "uninstall"; }
+opts="$(python3 "$REPO_ROOT/tools/steam_shortcuts.py" list --shortcuts "$S3" --name "Renamed WoW" --format json \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["launch_options"])')"
+[[ "$opts" == "PROTON_LOG=1 %command% -console" ]] || fail "launch options after rename + uninstall: $opts"
+ok "--match works, and --uninstall finds the shortcut by appid after it was renamed"
 
 echo "All $pass tests passed."

@@ -6,11 +6,12 @@
 #   (no options)             install or update to the latest release and print the remaining steps
 #   --version TAG            install a specific release (e.g. v1-exp-20260917b)
 #   --from-dir DIR           install from release files in DIR instead of downloading them
-#   --set-launch-options     also add the Turnip variables to the launch options of matching
-#                            non-Steam shortcuts (Steam must be closed)
-#   --set-compat-tool        also select the Frame fixes Proton for matching shortcuts (Steam must be closed)
-#   --match TEXT             shortcut exe/name to match for the two options above (repeatable;
-#                            default: "ARM64.exe" and "World of Warcraft")
+#   --set-launch-options     also add the Turnip variables to the launch options of the game's
+#                            non-Steam shortcut (Steam must be closed)
+#   --set-compat-tool        also select the Frame fixes Proton for that shortcut (Steam must be closed)
+#   --shortcut-name NAME     name of the shortcut for the two options above (default: "WoW Forever";
+#                            rename the game's shortcut in Steam to this name, or pass its name here)
+#   --match TEXT             instead of a name: select shortcuts whose exe or name contains TEXT
 #   --yes                    do not ask for confirmation
 #   --uninstall              remove everything this script installed and undo its shortcut changes
 #   --doctor                 show the installation state and what the last Proton logs say
@@ -25,7 +26,7 @@ REPO="${FRAME_FIXES_REPO:-jareqpl/steam-frame-fixes}"
 BASE_URL="${FRAME_FIXES_BASE_URL:-https://github.com/$REPO/releases}"
 TOOL_DIR_NAME="proton-frame-fixes"
 INTERNAL_TOOL_NAME=proton_frame_fixes
-DEFAULT_MATCH=("ARM64.exe" "World of Warcraft")
+DEFAULT_SHORTCUT_NAME="WoW Forever"
 
 STEAM_DIR="${STEAM_DIR:-$HOME/.local/share/Steam}"
 TOOL_DIR="$STEAM_DIR/compatibilitytools.d/$TOOL_DIR_NAME"
@@ -38,7 +39,7 @@ STATE_FILE="$DATA_DIR/state"
 HOST_DRIVER=/run/host/usr/lib/libvulkan_freedreno.so
 
 usage() {
-    sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -57,6 +58,7 @@ set_compat=0
 uninstall=0
 doctor=0
 yes=0
+names=()
 match=()
 
 while [[ $# -gt 0 ]]; do
@@ -65,6 +67,7 @@ while [[ $# -gt 0 ]]; do
         --from-dir) from_dir="${2:?--from-dir needs a value}"; shift ;;
         --set-launch-options) set_launch=1 ;;
         --set-compat-tool) set_compat=1 ;;
+        --shortcut-name) names+=("${2:?--shortcut-name needs a value}"); shift ;;
         --match) match+=("${2:?--match needs a value}"); shift ;;
         --yes) yes=1 ;;
         --uninstall) uninstall=1 ;;
@@ -74,7 +77,9 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
-[[ ${#match[@]} -gt 0 ]] || match=("${DEFAULT_MATCH[@]}")
+if [[ ${#names[@]} -eq 0 && ${#match[@]} -eq 0 ]]; then
+    names=("$DEFAULT_SHORTCUT_NAME")
+fi
 
 launch_line() {
     echo "VK_ICD_FILENAMES=$ICD_FILE VK_DRIVER_FILES=$ICD_FILE %command%"
@@ -242,50 +247,73 @@ shortcut_files() {
     compgen -G "$STEAM_DIR/userdata/*/config/shortcuts.vdf" || true
 }
 
-match_args() {
-    local m
-    for m in "${match[@]}"; do
-        printf '%s\0%s\0' --match "$m"
+# Arguments for steam_shortcuts.py that select the shortcuts given by --shortcut-name / --match
+selection_args() {
+    local n
+    for n in "${names[@]}"; do
+        printf '%s\0%s\0' --name "$n"
     done
+    for n in "${match[@]}"; do
+        printf '%s\0%s\0' --match "$n"
+    done
+}
+
+selection_text() {
+    local parts=() n
+    for n in "${names[@]}"; do parts+=("named \"$n\""); done
+    for n in "${match[@]}"; do parts+=("containing \"$n\""); done
+    local IFS=,
+    echo "${parts[*]}"
+}
+
+# Prints "<appid> <shortcuts.vdf>" for every selected shortcut of every Steam user.
+find_shortcuts() {
+    local files f sel=() appid
+    mapfile -t files < <(shortcut_files)
+    mapfile -d '' -t sel < <(selection_args)
+    for f in "${files[@]}"; do
+        while read -r appid; do
+            [[ -n "$appid" ]] && echo "$appid $f"
+        done < <(python3 "$SHORTCUTS_TOOL" list --shortcuts "$f" "${sel[@]}" --format appid || true)
+    done
+}
+
+no_shortcut_error() {
+    if [[ ${#names[@]} -gt 0 ]]; then
+        die "no non-Steam shortcut $(selection_text) found.
+In Steam, add the game (or Battle.net) as a non-Steam game, open its Properties and set its name to
+\"${names[0]}\", exit Steam, then run this again (or pass the current name with --shortcut-name)."
+    fi
+    die "no non-Steam shortcut $(selection_text) found"
 }
 
 do_set_launch_options() {
     require_steam_closed
-    local files f found=0 extra=()
-    mapfile -t files < <(shortcut_files)
-    [[ ${#files[@]} -gt 0 ]] || die "no non-Steam shortcuts found (add the game as a non-Steam game first)"
+    local found line appid f extra=()
+    mapfile -t found < <(find_shortcuts)
+    [[ ${#found[@]} -gt 0 ]] || no_shortcut_error
     [[ $yes -eq 1 ]] && extra+=(--yes)
-    local margs=()
-    mapfile -d '' -t margs < <(match_args)
-    for f in "${files[@]}"; do
-        info "Launch options in $f"
-        local rc=0
-        python3 "$SHORTCUTS_TOOL" set-launch-options --shortcuts "$f" "${margs[@]}" \
-            --env "VK_ICD_FILENAMES=$ICD_FILE" --env "VK_DRIVER_FILES=$ICD_FILE" "${extra[@]}" || rc=$?
-        case $rc in
-            0) found=1; state_add_line "launch $f" ;;
-            3) echo "    no matching shortcuts" ;;
-            *) die "could not update $f" ;;
-        esac
+    for line in "${found[@]}"; do
+        appid="${line%% *}"
+        f="${line#* }"
+        info "Launch options of appid $appid in $f"
+        python3 "$SHORTCUTS_TOOL" set-launch-options --shortcuts "$f" --appid "$appid" \
+            --env "VK_ICD_FILENAMES=$ICD_FILE" --env "VK_DRIVER_FILES=$ICD_FILE" "${extra[@]}" \
+            || die "could not update $f"
+        state_add_line "launch $line"
     done
-    [[ $found -eq 1 ]] || die "no shortcut matches: ${match[*]} (use --match)"
-    state_set match "$(printf '%s\x1f' "${match[@]}")"
 }
 
 do_set_compat_tool() {
     require_steam_closed
     local config="$STEAM_DIR/config/config.vdf"
     [[ -f "$config" ]] || die "$config not found"
-    local files f appids=() margs=()
-    mapfile -t files < <(shortcut_files)
-    mapfile -d '' -t margs < <(match_args)
-    for f in "${files[@]}"; do
-        mapfile -t -O "${#appids[@]}" appids < <(python3 "$SHORTCUTS_TOOL" list --shortcuts "$f" "${margs[@]}" --format appid || true)
-    done
-    [[ ${#appids[@]} -gt 0 ]] || die "no shortcut matches: ${match[*]} (use --match)"
-    local args=(set-compat-tool --config "$config" --tool "$INTERNAL_TOOL_NAME") a out
-    for a in "${appids[@]}"; do
-        args+=(--appid "$a")
+    local found line
+    mapfile -t found < <(find_shortcuts)
+    [[ ${#found[@]} -gt 0 ]] || no_shortcut_error
+    local args=(set-compat-tool --config "$config" --tool "$INTERNAL_TOOL_NAME") out
+    for line in "${found[@]}"; do
+        args+=(--appid "${line%% *}")
     done
     [[ $yes -eq 1 ]] && args+=(--yes)
     info "Compatibility tool in $config"
@@ -308,21 +336,16 @@ do_uninstall() {
     [[ $needs_steam_closed -eq 1 ]] && require_steam_closed
 
     if [[ $needs_steam_closed -eq 1 && -f "$SHORTCUTS_TOOL" ]]; then
-        local saved line f margs=() m
-        saved="$(state_get match)"
-        if [[ -n "$saved" ]]; then
-            IFS=$'\x1f' read -r -a match <<<"$saved"
-        fi
-        for m in "${match[@]}"; do margs+=(--match "$m"); done
-        while read -r line; do
-            f="${line#launch }"
+        # "launch <appid> <shortcuts.vdf>": by appid, so renaming the shortcut later does not matter
+        local appid f
+        while read -r _ appid f; do
             [[ -f "$f" ]] || continue
-            info "Removing launch options in $f"
-            python3 "$SHORTCUTS_TOOL" unset-launch-options --shortcuts "$f" "${margs[@]}" \
+            info "Removing launch options of appid $appid in $f"
+            python3 "$SHORTCUTS_TOOL" unset-launch-options --shortcuts "$f" --appid "$appid" \
                 --env VK_ICD_FILENAMES --env VK_DRIVER_FILES --yes || echo "warning: could not update $f" >&2
         done < <(grep '^launch ' "$STATE_FILE" || true)
 
-        local config="$STEAM_DIR/config/config.vdf" appid previous
+        local config="$STEAM_DIR/config/config.vdf" previous
         if [[ -f "$config" ]]; then
             while read -r _ appid previous; do
                 info "Restoring the compatibility tool of appid $appid"
@@ -369,7 +392,7 @@ do_doctor() {
     echo "Launch options: $(launch_line)"
     if [[ -f "$STATE_FILE" ]] && grep -qE '^(launch|compat) ' "$STATE_FILE"; then
         echo "Changed by this installer:"
-        sed -nE 's/^launch (.*)/  launch options in \1/p; s/^compat ([0-9]+) (.*)/  compatibility tool of appid \1 (previously: \2)/p' "$STATE_FILE"
+        sed -nE 's/^launch ([0-9]+) (.*)/  launch options of appid \1 in \2/p; s/^compat ([0-9]+) (.*)/  compatibility tool of appid \1 (previously: \2)/p' "$STATE_FILE"
     fi
 
     local appid pfx_ntdll
@@ -430,16 +453,24 @@ Done. Remaining steps:
   1. Restart Steam (Steam menu > Exit, then start it again).
 EOF
 if [[ $set_compat -eq 1 ]]; then
-    echo "  2. Compatibility tool: already set to \"$name\" for the matching shortcuts."
+    echo "  2. Compatibility tool: already set to \"$name\" for the shortcut $(selection_text)."
 else
     echo "  2. In the game's shortcut: Properties > Compatibility > force \"$name\"."
 fi
 if [[ $set_launch -eq 1 ]]; then
-    echo "  3. Launch options: already set for the matching shortcuts."
+    echo "  3. Launch options: already set for the shortcut $(selection_text)."
 else
     echo "  3. In the game's shortcut: Properties > General > Launch options, enter exactly:"
     echo
     echo "     $(launch_line)"
+fi
+if [[ $set_compat -eq 0 || $set_launch -eq 0 ]]; then
+    cat <<EOF
+
+Tip: steps 2 and 3 can be done automatically. Name the game's shortcut "$DEFAULT_SHORTCUT_NAME" in Steam
+(Properties > name field), exit Steam, then run:
+     bash $INSTALLER_COPY --set-compat-tool --set-launch-options
+EOF
 fi
 cat <<EOF
 

@@ -175,6 +175,17 @@ class BinaryVdfTest(unittest.TestCase):
         self.assertEqual([x.index_key for x in sc if x.matches(["nothing", "battle.net"])], ["0"])
         self.assertEqual(len([x for x in sc if x.matches([])]), 3)
 
+    def test_matching_by_exact_name(self):
+        data = m("shortcuts",
+                 shortcut(0, 1, "WoW Forever", BNET_EXE),
+                 shortcut(1, 2, "WoW Forever (old)", WOW_EXE),
+                 shortcut(2, 3, " wow forever ", '"/x.exe"')) + b"\x08"
+        sc = ss.shortcuts_of(ss.parse_binary_vdf(data))
+        self.assertEqual([x.index_key for x in sc if x.matches(names=["WoW Forever"])], ["0", "2"])
+        self.assertEqual([x.index_key for x in sc if x.matches(names=["WOW FOREVER (OLD)"])], ["1"])
+        self.assertEqual([x.index_key for x in sc if x.matches(names=["WoW"])], [])
+        self.assertEqual([x.index_key for x in sc if x.matches(["ARM64.exe"], ["nothing"])], ["1"])
+
     def test_rejects_broken_files(self):
         data = sample_shortcuts()
         for bad in (data[:-1], data[:-30], data + b"\x00", b"\x00shortcuts\x00\x09k\x00\x08\x08", b""):
@@ -362,6 +373,29 @@ class CliTest(unittest.TestCase):
 
         rc, _, err = run_cli("unset-launch-options", *args, "--env", "VK_ICD_FILENAMES", "--env", "VK_DRIVER_FILES")
         self.assertEqual(rc, 0, err)
+        self.assertEqual(self.read(), self.original)
+
+    def test_select_by_name(self):
+        rc, out, _ = run_cli("list", "--shortcuts", self.shortcuts, "--name", "battle.net", "--format", "appid")
+        self.assertEqual((rc, out), (0, f"{(-1951453210) & 0xFFFFFFFF}\n"))
+        rc, _, err = run_cli("set-launch-options", "--shortcuts", self.shortcuts, "--allow-running", "--yes",
+                             "--name", "Battle.net", *ENV_ARGS)
+        self.assertEqual(rc, 0, err)
+        sc = ss.shortcuts_of(ss.parse_binary_vdf(self.read()))
+        self.assertTrue(sc[0].launch_options.startswith(OURS))
+        self.assertEqual(sc[1].launch_options, "PROTON_LOG=1 %command% -console")
+
+    def test_select_by_appid(self):
+        wow = str((-1294003210) & 0xFFFFFFFF)
+        rc, out, _ = run_cli("list", "--shortcuts", self.shortcuts, "--appid", wow, "--format", "appid")
+        self.assertEqual((rc, out), (0, wow + "\n"))
+        rc, _, _ = run_cli("list", "--shortcuts", self.shortcuts, "--appid", "1")
+        self.assertEqual(rc, 3)
+
+    def test_edit_requires_a_selection(self):
+        rc, _, err = run_cli("set-launch-options", "--shortcuts", self.shortcuts, "--allow-running", "--yes", *ENV_ARGS)
+        self.assertEqual(rc, 1)
+        self.assertIn("--name, --match or --appid", err)
         self.assertEqual(self.read(), self.original)
 
     def test_dry_run_and_no_match_do_not_write(self):
