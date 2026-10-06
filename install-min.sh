@@ -7,7 +7,6 @@ STEAM=~/.local/share/Steam
 DIR=~/.local/share/steam-frame-fixes
 ICD=$DIR/turnip/freedreno_icd.aarch64.json
 
-pgrep -x steam >/dev/null && { echo "Exit Steam first (Steam > Exit)."; exit 1; }
 get() { if [ -f "$1" ]; then cat "$1"; else curl -fL "$URL/$1"; fi; }  # local file or download
 
 # 1. Proton -> compatibility tool
@@ -62,4 +61,4 @@ for a in appids:
 open(path, "w").write(text)
 EOF
 
-echo "Done. Start Steam and launch \"WoW Forever\"."
+echo "Done. Restart Steam, then launch \"WoW Forever\"."

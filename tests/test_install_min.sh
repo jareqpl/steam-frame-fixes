@@ -79,18 +79,6 @@ run_min > "$T/log" 2>&1 || { cat "$T/log"; fail "second run"; }
 check || fail "Steam files after the second run"
 ok "running it again gives the same result"
 
-mkdir -p "$T/fakebin"
-cat > "$T/fakebin/pgrep" <<'EOF'
-#!/bin/sh
-exit 0
-EOF
-chmod +x "$T/fakebin/pgrep"
-if (cd "$T/dist" && PATH="$T/fakebin:$PATH" HOME="$H" bash "$REPO_ROOT/install-min.sh") > "$T/log" 2>&1; then
-    fail "ran while Steam was running"
-fi
-grep -q "Exit Steam first" "$T/log" || fail "no Steam running message"
-ok "refuses to run while Steam is running"
-
 cp "$T/other.orig" "$STEAM/userdata/1234/config/shortcuts.vdf"
 if run_min > "$T/log" 2>&1; then
     fail "succeeded without a shortcut named WoW Forever"

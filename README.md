@@ -97,8 +97,8 @@ Running `install.sh` again updates to the latest release.
 ### Minimal variant
 
 [`install-min.sh`](install-min.sh) does only what is needed to start the game, for a non-Steam shortcut named
-exactly `WoW Forever`: with Steam closed, it unpacks Proton and Turnip, writes the driver's ICD file, replaces
-the shortcut's launch options and selects the Frame fixes Proton for it. It has no checksum verification, no
+exactly `WoW Forever`: it unpacks Proton and Turnip, writes the driver's ICD file, replaces the shortcut's
+launch options and selects the Frame fixes Proton for it. Restart Steam afterwards. It has no checksum verification, no
 backups, no uninstaller and installs the release named in its `VER=` line. Run it next to the downloaded
 release files (or let it download them):
 
