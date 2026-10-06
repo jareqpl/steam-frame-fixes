@@ -104,6 +104,18 @@ if [[ $skip_build -eq 0 && ! -d "$src/.git" ]]; then
     fi
 fi
 
+# Proton's Makefile runs `git describe` in these submodules to get version strings (FEX fails without
+# it), which needs their history and tags; the shallow clone above has neither.
+DESCRIBE_SUBMODULES=(FEX dxvk vkd3d-proton)
+if [[ $skip_build -eq 0 ]]; then
+    for m in "${DESCRIBE_SUBMODULES[@]}"; do
+        if [[ "$(git -C "$src/$m" rev-parse --is-shallow-repository)" == true ]]; then
+            echo "==> Fetching history and tags of $m (needed for its version string)"
+            git -C "$src/$m" fetch -q --unshallow --tags --no-recurse-submodules
+        fi
+    done
+fi
+
 actual_tag="$(git -C "$src" describe --tags --exact-match HEAD 2>/dev/null || true)"
 [[ "$actual_tag" == "$PROTON_TAG" ]] || die "$src is at '${actual_tag:-$(git -C "$src" rev-parse HEAD)}', expected $PROTON_TAG (use a clean --work-dir)"
 
