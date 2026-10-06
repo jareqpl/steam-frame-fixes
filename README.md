@@ -94,6 +94,18 @@ Other options:
 
 Running `install.sh` again updates to the latest release.
 
+### Minimal variant
+
+[`install-min.sh`](install-min.sh) does only what is needed to start the game, for a non-Steam shortcut named
+exactly `WoW Forever`: with Steam closed, it unpacks Proton and Turnip, writes the driver's ICD file, replaces
+the shortcut's launch options and selects the Frame fixes Proton for it. It has no checksum verification, no
+backups, no uninstaller and installs the release named in its `VER=` line. Run it next to the downloaded
+release files (or let it download them):
+
+```bash
+bash install-min.sh
+```
+
 ### Why the launch options?
 
 Steam runs Proton inside the Steam Runtime container (pressure-vessel), which sets `VK_ICD_FILENAMES` to the
@@ -186,7 +198,7 @@ Pinned versions:
 | Mesa | [`e3a986f0167aa7d1c5cfd62a63362c65f5339373`](https://gitlab.freedesktop.org/mesa/mesa/-/commit/e3a986f0167aa7d1c5cfd62a63362c65f5339373) |
 | Steam Runtime SDK | `steamrt4/sdk/arm64-llvm:4.0.20260714.251823-0` |
 
-Tests: `python3 -m unittest discover -s tools/tests` and `tests/test_install.sh`.
+Tests: `python3 -m unittest discover -s tools/tests`, `tests/test_install.sh` and `tests/test_install_min.sh`.
 
 ## Credits
 
