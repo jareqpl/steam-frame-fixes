@@ -14,6 +14,7 @@
 #   turnip-frame-<ver>.tar.xz           out/turnip/ as turnip/
 #   wine-src-<commit>-patched.tar.xz    Wine sources with patches/wine applied (LGPL compliance)
 #   install.sh                          the installer from this repository
+#   steam_shortcuts.py                  helper used by install.sh to edit Steam shortcuts
 #   SHA256SUMS
 
 set -euo pipefail
@@ -22,10 +23,10 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 WINE_URL="${WINE_URL:-https://github.com/ValveSoftware/wine.git}"
 WINE_COMMIT="${WINE_COMMIT:-debeec01b20ce07a0abc9a1876aa372259335d74}"
-TOOL_DIR_NAME=proton-frame-fixes
+TOOL_DIR_NAME="proton-frame-fixes"
 
 usage() {
-    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -133,7 +134,8 @@ fi
 
 if [[ -f "$REPO_ROOT/install.sh" ]]; then
     install -m 0755 "$REPO_ROOT/install.sh" "$dist_dir/install.sh"
-    assets+=(install.sh)
+    install -m 0755 "$REPO_ROOT/tools/steam_shortcuts.py" "$dist_dir/steam_shortcuts.py"
+    assets+=(install.sh steam_shortcuts.py)
 fi
 
 [[ ${#assets[@]} -gt 0 ]] || die "nothing to package"

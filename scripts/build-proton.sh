@@ -28,8 +28,8 @@ WINE_COMMIT="${WINE_COMMIT:-debeec01b20ce07a0abc9a1876aa372259335d74}"
 CONTAINER_ENGINE="${CONTAINER_ENGINE:-docker}"
 
 # Directory name in compatibilitytools.d, build name and internal tool name (CompatToolMapping "name")
-TOOL_DIR_NAME=proton-frame-fixes
-BUILD_NAME=proton-frame-fixes
+TOOL_DIR_NAME="proton-frame-fixes"
+BUILD_NAME="proton-frame-fixes"
 INTERNAL_TOOL_NAME=proton_frame_fixes
 
 # The fix puts the syscall dispatcher pointer at 0x7ffe1000; every syscall thunk in ntdll.dll
