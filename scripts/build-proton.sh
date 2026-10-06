@@ -175,7 +175,7 @@ rm -rf "$tool"
 cp -a "$redist" "$tool"
 
 sed -i -E \
-    -e "s|^([[:space:]]*)\"$BUILD_NAME-proton\"|\1\"$INTERNAL_TOOL_NAME\"|" \
+    -e "s|^([[:space:]]*)\"$BUILD_NAME(-proton)?\"|\1\"$INTERNAL_TOOL_NAME\"|" \
     -e "s|^([[:space:]]*\"display_name\"[[:space:]]+)\"[^\"]*\"|\1\"$display_name\"|" \
     "$tool/compatibilitytool.vdf"
 
