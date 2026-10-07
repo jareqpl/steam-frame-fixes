@@ -193,6 +193,12 @@ Pinned versions:
 
 Tests: `tests/test_install_min.sh` (no ARM64 or Steam needed) and `scripts/check-patches.sh`.
 
+## Contact
+
+Questions, problems and reports are welcome as [GitHub issues](https://github.com/jareqpl/steam-frame-fixes/issues).
+Please include the relevant lines of `~/steam-<appid>.log` (see [Troubleshooting](#troubleshooting)) and never
+post anything that identifies your game account.
+
 ## Credits
 
 - [Wine](https://www.winehq.org/) and [Proton](https://github.com/ValveSoftware/Proton) (Valve, CodeWeavers and
