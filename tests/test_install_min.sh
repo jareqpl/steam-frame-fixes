@@ -89,6 +89,40 @@ run_min > "$T/log" 2>&1 || { cat "$T/log"; fail "second run"; }
 check_installed || fail "Steam files after the second run"
 ok "running it again gives the same result"
 
+# --- Standalone: only the script, everything downloaded and verified ---------------------------
+
+new_home() {
+    mkdir -p "$1/.local/share/Steam/userdata/1234/config" "$1/.local/share/Steam/config"
+    py "$1/.local/share/Steam" <<'EOF'
+import sys, vdf
+steam = sys.argv[1]
+open(steam + "/userdata/1234/config/shortcuts.vdf", "wb").write(vdf.sample_shortcuts())
+open(steam + "/config/config.vdf", "w").write(vdf.CONFIG_VDF)
+EOF
+}
+
+H2="$T/home2"
+new_home "$H2"
+mkdir -p "$T/alone"
+cp "$T/dist/install-min.sh" "$T/alone/"
+(cd "$T/alone" && HOME="$H2" FRAME_FIXES_URL="file://$T/dist" bash install-min.sh) > "$T/log" 2>&1 \
+    || { cat "$T/log"; fail "standalone install"; }
+grep -q "Downloading proton-frame-$VERSION.tar.xz" "$T/log" || fail "did not download"
+[[ -f "$H2/.local/share/Steam/compatibilitytools.d/proton-frame-fixes/proton" ]] || fail "standalone: Proton not installed"
+compgen -G "$H2/.local/share/steam-frame-fixes/.download.*" >/dev/null && fail "download directory left behind"
+ok "standalone: downloads the archives, verifies them and installs"
+
+H3="$T/home3"
+new_home "$H3"
+cp -r "$T/dist" "$T/tampered"
+printf 'X' | dd of="$T/tampered/turnip-frame-$VERSION.tar.xz" bs=1 seek=100 conv=notrunc 2>/dev/null
+if (cd "$T/alone" && HOME="$H3" FRAME_FIXES_URL="file://$T/tampered" bash install-min.sh) > "$T/log" 2>&1; then
+    fail "installed a tampered archive"
+fi
+grep -q "Checksum error" "$T/log" || fail "no checksum message"
+[[ ! -e "$H3/.local/share/Steam/compatibilitytools.d/proton-frame-fixes" ]] || fail "installed before verifying"
+ok "standalone: refuses an archive with a wrong checksum"
+
 # --- uninstall-min.sh: the user added PROTON_LOG=1 and renamed the shortcut ---------------------
 
 py "$STEAM/userdata/1234/config/shortcuts.vdf" <<'EOF'

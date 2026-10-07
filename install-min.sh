@@ -1,23 +1,36 @@
 #!/bin/bash
-# Minimal setup: Proton (Frame fixes) + Turnip for the non-Steam shortcut named "WoW Forever".
+# Steam Frame fixes for World of Warcraft (ARM64): downloads Proton (Frame fixes) and Turnip from the release,
+# verifies them and sets them up for the non-Steam shortcut named "WoW Forever". Usage: bash install-min.sh
 set -euo pipefail
 VER=v0.1-exp-20260917b
-URL=https://github.com/jareqpl/steam-frame-fixes/releases/download/$VER
+URL=${FRAME_FIXES_URL:-https://github.com/jareqpl/steam-frame-fixes/releases/download/$VER}
 STEAM=~/.local/share/Steam
 DIR=~/.local/share/steam-frame-fixes
 ICD=$DIR/turnip/freedreno_icd.aarch64.json
+PROTON=proton-frame-$VER.tar.xz
+TURNIP=turnip-frame-$VER.tar.xz
 
-get() { if [ -f "$1" ]; then cat "$1"; else curl -fL "$URL/$1"; fi; }  # local file or download
+grep -qia "wow forever" "$STEAM"/userdata/*/config/shortcuts.vdf 2>/dev/null \
+    || { echo 'No non-Steam shortcut named "WoW Forever". Rename the game in Steam and run this again.'; exit 1; }
 
-# 1. Proton -> compatibility tool
+# 1. Download (files next to the script are used instead, if present) and verify
 mkdir -p "$STEAM/compatibilitytools.d" "$DIR"
-get "proton-frame-$VER.tar.xz" | tar -xJ -C "$STEAM/compatibilitytools.d"
+TMP=$(mktemp -d "$DIR/.download.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+for f in SHA256SUMS "$PROTON" "$TURNIP"; do
+    if [ -f "$f" ]; then cp "$f" "$TMP/"; else echo "Downloading $f"; curl -fL --retry 3 -o "$TMP/$f" "$URL/$f"; fi
+done
+(cd "$TMP" && grep -E "  ($PROTON|$TURNIP)\$" SHA256SUMS > sums && [ "$(wc -l < sums)" = 2 ] && sha256sum -c --quiet sums) \
+    || { echo "Checksum error, try again."; exit 1; }
 
-# 2. Turnip + Vulkan ICD file pointing to it
-get "turnip-frame-$VER.tar.xz" | tar -xJ -C "$DIR"
+# 2. Proton -> compatibility tool
+tar -xJf "$TMP/$PROTON" -C "$STEAM/compatibilitytools.d"
+
+# 3. Turnip + Vulkan ICD file pointing to it
+tar -xJf "$TMP/$TURNIP" -C "$DIR"
 sed "s|@LIBPATH@|$DIR/turnip/libvulkan_freedreno.so|" "$ICD.in" > "$ICD"
 
-# 3. Shortcut "WoW Forever": launch options (shortcuts.vdf) and compatibility tool (config.vdf)
+# 4. Shortcut "WoW Forever": launch options (shortcuts.vdf) and compatibility tool (config.vdf)
 python3 - "$STEAM" "VK_ICD_FILENAMES=$ICD VK_DRIVER_FILES=$ICD %command%" <<'EOF'
 import glob, re, struct, sys
 steam, opts = sys.argv[1], sys.argv[2].encode()

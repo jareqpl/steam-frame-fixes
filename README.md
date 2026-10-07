@@ -45,9 +45,8 @@ Reports and patches for the upstream projects are drafted in [UPSTREAM.md](UPSTR
 1. Add **Battle.net** (or the game's ARM64 executable) to Steam as a non-Steam game, see
    [Game setup](#game-setup).
 2. Rename that shortcut to exactly **`WoW Forever`** (right-click it > Properties, the name field at the top).
-3. From the [latest release](https://github.com/jareqpl/steam-frame-fixes/releases), download
-   `install-min.sh`, `proton-frame-<version>.tar.xz` and `turnip-frame-<version>.tar.xz` into one folder.
-4. In desktop mode, open a terminal in that folder and run:
+3. Download `install-min.sh` from the [latest release](https://github.com/jareqpl/steam-frame-fixes/releases).
+4. In desktop mode, open a terminal in the folder with the script and run:
 
    ```bash
    bash install-min.sh
@@ -55,7 +54,8 @@ Reports and patches for the upstream projects are drafted in [UPSTREAM.md](UPSTR
 
 5. **Restart Steam** and launch `WoW Forever`.
 
-`install-min.sh` uses the archives next to it, or downloads them from the release if they are missing. It:
+`install-min.sh` downloads the Proton and Turnip archives of its release (about 370 MB), verifies them against
+the release's `SHA256SUMS` and then (archives already next to the script are used instead of downloading):
 
 - unpacks Proton into `~/.local/share/Steam/compatibilitytools.d/proton-frame-fixes/`,
 - unpacks Turnip into `~/.local/share/steam-frame-fixes/turnip/` and writes its Vulkan ICD file,
@@ -69,7 +69,7 @@ Reports and patches for the upstream projects are drafted in [UPSTREAM.md](UPSTR
 - selects **Proton Experimental ARM64 (Frame fixes)** as its compatibility tool.
 
 Steam does not need to be closed; the changes are picked up after the restart (tested on Steam Frame).
-The script does not verify checksums (compare with `SHA256SUMS` yourself if you want) and makes no backups.
+The script makes no backups of the Steam files it changes.
 
 To set it up by hand instead, use the same two settings in the shortcut's Properties: Compatibility > force
 *Proton Experimental ARM64 (Frame fixes)*, and General > Launch options as above.
@@ -145,7 +145,7 @@ It prints several hundred with the fix and `0` without it.
 
 - Releases are built from source by [GitHub Actions](.github/workflows/build.yml); the build logs are public.
 - All patches are in [`patches/`](patches) and are small enough to review.
-- Every release lists the SHA-256 checksums of its files in `SHA256SUMS` (`sha256sum -c SHA256SUMS`).
+- `install-min.sh` verifies the downloaded archives against the release's `SHA256SUMS` before unpacking them.
 - Nothing modifies game files. `install-min.sh` only changes the launch options and the compatibility tool of
   the `WoW Forever` shortcut, and `uninstall-min.sh` removes those changes.
 
