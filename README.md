@@ -31,7 +31,7 @@ scripts before running them, and report anything that looks wrong.
 
 ## What is fixed
 
-**1. Crash in the game's protection (Wine/Proton).**
+**1. Crash at startup (Wine/Proton).**
 The ARM64 client crashes right after creating its DirectX device (`c0000005` at address 0). Its
 anti-tamper code calls system call stubs from its own copy of `ntdll.dll`, in which Wine's pointer to the
 system call dispatcher is zero. On x86_64 Wine keeps that pointer at a fixed address (`0x7ffe1000`) for exactly
