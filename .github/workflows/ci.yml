@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck
+        run: shellcheck install-min.sh uninstall-min.sh scripts/*.sh tests/*.sh
+
+      - name: install-min.sh / uninstall-min.sh tests
+        run: tests/test_install_min.sh
+
+      - name: Patches apply to the pinned Wine and Mesa
+        run: scripts/check-patches.sh
