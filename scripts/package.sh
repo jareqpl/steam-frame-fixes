@@ -13,6 +13,8 @@
 #   proton-frame-<ver>.tar.xz           out/proton/proton-frame-fixes/ (+ BUILDINFO)
 #   turnip-frame-<ver>.tar.xz           out/turnip/ as turnip/
 #   wine-src-<commit>-patched.tar.xz    Wine sources with patches/wine applied (LGPL compliance)
+#   proton-src-<ver>.tar.xz             Proton with all submodules as built (out/proton/sources, see build-proton.sh)
+#   proton-src-downloads-<ver>.tar      other source archives used by the Proton build (wine-mono, wine-gecko, ...)
 #   install-min.sh                      minimal installer (its VER= line set to this version)
 #   uninstall-min.sh                    removes what install-min.sh installed
 #   SHA256SUMS
@@ -26,7 +28,7 @@ WINE_COMMIT="${WINE_COMMIT:-debeec01b20ce07a0abc9a1876aa372259335d74}"
 TOOL_DIR_NAME="proton-frame-fixes"
 
 usage() {
-    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -105,6 +107,21 @@ if [[ -f "$out_dir/turnip/libvulkan_freedreno.so" ]]; then
     assets+=("turnip-frame-$version.tar.xz")
 else
     echo "warning: no Turnip build in $out_dir/turnip, skipping" >&2
+fi
+
+# --- Proton corresponding source -----------------------------------------------------------------
+
+if [[ -f "$out_dir/proton/sources/proton-source.tar.xz" ]]; then
+    echo "==> proton-src-$version.tar.xz"
+    size="$(stat -c %s "$out_dir/proton/sources/proton-source.tar.xz")"
+    (( size < 2000000000 )) || die "proton-source.tar.xz is larger than a GitHub release file may be"
+    cp "$out_dir/proton/sources/proton-source.tar.xz" "$dist_dir/proton-src-$version.tar.xz"
+    assets+=("proton-src-$version.tar.xz")
+    echo "==> proton-src-downloads-$version.tar"
+    tar -C "$out_dir/proton/sources" "${TAR_OPTS[@]}" -cf "$dist_dir/proton-src-downloads-$version.tar" downloads
+    assets+=("proton-src-downloads-$version.tar")
+elif [[ -d "$out_dir/proton/$TOOL_DIR_NAME" ]]; then
+    echo "warning: no Proton sources in $out_dir/proton/sources (build-proton.sh --no-sources?)" >&2
 fi
 
 # --- Wine sources (LGPL) -----------------------------------------------------------------------

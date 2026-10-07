@@ -211,9 +211,14 @@ post anything that identifies your game account.
 ## License
 
 The scripts and tools in this repository are under the [MIT license](LICENSE). The patches and the built
-components are under the licenses of their projects: Wine is LGPL 2.1 or later (the patched Wine sources are
-published with every release), Proton's own files are under its BSD-style license, Mesa is MIT. Each release
-archive contains the corresponding license files.
+components are under the licenses of their projects: Wine is LGPL 2.1 or later, Proton's own files are under its
+BSD-style license, Mesa is MIT, and Proton bundles many other components under the GPL, LGPL, MPL, Apache, MIT,
+BSD and other licenses. Each release archive contains the license texts of its components in `licenses/`.
+
+Every release built by CI also publishes the complete corresponding source of its binaries: `proton-src-*`
+(Proton with all its submodules, exactly as built, with the Wine patch applied), `proton-src-downloads-*` (the
+other sources the Proton build uses, such as wine-mono and wine-gecko) and `wine-src-*` (the patched Wine sources
+alone). The build scripts are in this repository at the release tag.
 
 ## Trademarks
 

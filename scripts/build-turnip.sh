@@ -15,7 +15,8 @@
 # Output (in --out-dir):
 #   libvulkan_freedreno.so            the driver
 #   freedreno_icd.aarch64.json.in     Vulkan ICD manifest, "library_path" is "@LIBPATH@"
-#   LICENSE                           Mesa license
+#   LICENSE                           Mesa license overview (docs/license.rst)
+#   licenses/                         full license texts referenced by the Mesa sources
 #   BUILDINFO                         commits, patches, image and glibc requirements
 
 set -euo pipefail
@@ -53,7 +54,7 @@ MESON_OPTIONS=(
 )
 
 usage() {
-    sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -139,6 +140,7 @@ with open(sys.argv[2], "w") as f:
     f.write("\n")
 EOF
     install -m 0644 "$src/docs/license.rst" "$out_dir/LICENSE"
+    cp -r "$src/licenses" "$out_dir/licenses"
 
     {
         echo "component: turnip"

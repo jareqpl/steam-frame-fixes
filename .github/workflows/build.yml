@@ -32,12 +32,12 @@ jobs:
         run: scripts/build-turnip.sh
 
       - name: Archive the build output
-        run: tar -C out -cf - turnip | xz -T0 -1 > turnip-out.tar.xz
+        run: tar -C out -cf - turnip | zstd -T0 -3 -q -o turnip-out.tar.zst
 
       - uses: actions/upload-artifact@v7
         with:
           name: turnip-out
-          path: turnip-out.tar.xz
+          path: turnip-out.tar.zst
           compression-level: 0
           retention-days: 14
 
@@ -89,12 +89,13 @@ jobs:
           du -sh "$WORK"/* 2>/dev/null || true
 
       - name: Archive the build output
-        run: tar -C out -cf - proton | xz -T0 -1 > proton-out.tar.xz
+        # includes out/proton/sources (corresponding source, already compressed)
+        run: tar -C out -cf - proton | zstd -T0 -3 -q -o proton-out.tar.zst
 
       - uses: actions/upload-artifact@v7
         with:
           name: proton-out
-          path: proton-out.tar.xz
+          path: proton-out.tar.zst
           compression-level: 0
           retention-days: 14
 
@@ -115,7 +116,7 @@ jobs:
       - name: Unpack the build outputs
         run: |
           mkdir -p out
-          for f in artifacts/*/*-out.tar.xz; do tar -C out -xJf "$f"; done
+          for f in artifacts/*/*-out.tar.zst; do zstd -dc "$f" | tar -C out -xf -; done
           ls out
 
       - name: Package

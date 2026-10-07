@@ -11,11 +11,14 @@
 #   --ccache             use ccache ($CCACHE_DIR, default ~/.ccache)
 #   --clean              remove the previous build tree first
 #   --skip-build         only copy and verify the result of a previous build (any host)
+#   --no-sources         do not collect the corresponding source (<out-dir>/sources), e.g. for local tests
 #   -h, --help           show this help
 #
 # Environment overrides: PROTON_URL, PROTON_TAG, WINE_COMMIT, CONTAINER_ENGINE (docker|podman), CCACHE_DIR.
 #
-# Output: <out-dir>/proton-frame-fixes/ (compatibility tool directory, the result of `make redist`)
+# Output: <out-dir>/proton-frame-fixes/ (compatibility tool directory, the result of `make redist`,
+#                                        with the third-party license texts in licenses/)
+#         <out-dir>/sources/ (Proton sources with all submodules and the other source archives)
 #         <out-dir>/BUILDINFO
 
 set -euo pipefail
@@ -38,7 +41,7 @@ FIXED_ADDRESS_HEX=0010fe7f00000000
 MIN_FIXED_ADDRESS_COUNT=100
 
 usage() {
-    sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -52,6 +55,7 @@ display_name="Proton Experimental ARM64 (Frame fixes)"
 ccache=0
 clean=0
 skip_build=0
+sources=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -61,6 +65,7 @@ while [[ $# -gt 0 ]]; do
         --ccache) ccache=1 ;;
         --clean) clean=1 ;;
         --skip-build) skip_build=1 ;;
+        --no-sources) sources=0 ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "unknown argument: $1" ;;
     esac
@@ -199,6 +204,99 @@ actual_name="$(sed -nE 's/^[[:space:]]*"display_name"[[:space:]]+"([^"]*)".*/\1/
 [[ "$actual_name" == "$display_name" ]] || die "display_name in compatibilitytool.vdf is '$actual_name'"
 grep -qF "\"$INTERNAL_TOOL_NAME\"" "$tool/compatibilitytool.vdf" || die "internal tool name was not set in compatibilitytool.vdf"
 echo "    compatibilitytool.vdf: $INTERNAL_TOOL_NAME, \"$display_name\""
+
+# --- License texts and corresponding source ------------------------------------------------------
+# The binaries include GPL/LGPL/MPL/Apache-licensed components. Their license texts go into the tool
+# directory (licenses/), and the complete corresponding source into <out-dir>/sources/, which
+# scripts/package.sh publishes next to the binaries.
+
+# Archives that Proton's build downloads itself: source archives fetched by piper's CMake
+# (fmt, spdlog, piper-phonemize, and espeak-ng by commit) and prebuilt binaries (onnxruntime,
+# wine-mono, wine-gecko, xalia).
+find_downloaded_archives() {
+    find "$build" "$src/contrib" -type f -regextype posix-extended \
+        -regex '.*/(pic\.zip|[0-9a-f]{40}\.zip|v?[0-9][0-9.]*\.zip|onnxruntime-linux-[^/]*\.tgz|wine-(gecko|mono)-[^/]*\.tar\.xz|xalia-[^/]*\.zip)' \
+        2>/dev/null | sort -u
+}
+
+# extract_licenses <archive> <dest dir>: license files near the top of a zip or tar archive
+extract_licenses() {
+    python3 - "$1" "$2" <<'EOF'
+import os, re, sys, tarfile, zipfile
+archive, dest = sys.argv[1:]
+pattern = re.compile(r"^(COPYING|COPYRIGHT|LICEN[CS]E|NOTICE|ThirdPartyNotices)([._-].*)?$", re.I)
+def wanted(name):
+    parts = name.strip("/").split("/")
+    return len(parts) <= 3 and pattern.match(parts[-1])
+def save(name, data):
+    path = os.path.join(dest, name.strip("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+if zipfile.is_zipfile(archive):
+    with zipfile.ZipFile(archive) as z:
+        for m in z.namelist():
+            if not m.endswith("/") and wanted(m):
+                save(m, z.read(m))
+else:
+    with tarfile.open(archive) as t:
+        for m in t:
+            if m.isfile() and wanted(m.name):
+                save(m.name, t.extractfile(m).read())
+EOF
+}
+
+echo "==> Collecting license texts"
+licenses="$tool/licenses"
+rm -rf "$licenses"
+mkdir -p "$licenses"
+# shellcheck disable=SC2016 # $displaypath is expanded by git submodule foreach
+while read -r m; do
+    for f in "$src/$m"/*; do
+        if [[ -f "$f" && "$(basename "$f")" =~ ^(COPYING|COPYRIGHT|LICEN[CS]E|NOTICE)([._-].*)?$ ]]; then
+            install -D -m 0644 "$f" "$licenses/$m/$(basename "$f")"
+        fi
+    done
+done < <(git -C "$src" submodule foreach --quiet --recursive 'echo "$displaypath"')
+
+mapfile -t downloaded < <(find_downloaded_archives)
+for a in "${downloaded[@]}"; do
+    extract_licenses "$a" "$licenses/downloaded/$(basename "$a")"
+done
+
+if [[ $sources -eq 1 ]]; then
+    echo "==> Collecting the corresponding source"
+    sources_dir="$out_dir/sources"
+    rm -rf "$sources_dir"
+    mkdir -p "$sources_dir/downloads"
+    # Proton with all submodules, as built (Wine patch applied)
+    tar -C "$src" --exclude=.git --sort=name --owner=0 --group=0 --numeric-owner \
+        --transform "s|^\.|proton-$PROTON_TAG|" -cf - . \
+        | xz -T0 -6 > "$sources_dir/proton-source.tar.xz"
+    # Source archives downloaded by the build (the prebuilt binaries are not sources)
+    for a in "${downloaded[@]}"; do
+        case "$(basename "$a")" in
+            onnxruntime-*|wine-gecko-*|wine-mono-*|xalia-*) ;;
+            *) cp "$a" "$sources_dir/downloads/" ;;
+        esac
+    done
+    # Sources of the prebuilt components, from their projects
+    mono_ver="$(sed -n 's/^WINEMONO_VER := //p' "$src/Makefile.in")"
+    gecko_ver="$(sed -n 's/^GECKO_VER := //p' "$src/Makefile.in")"
+    xalia_ver="$(sed -n 's/^XALIA_VER := //p' "$src/Makefile.in")"
+    for url in "https://dl.winehq.org/wine/wine-mono/$mono_ver/wine-mono-$mono_ver-src.tar.xz" \
+               "https://dl.winehq.org/wine/wine-gecko/$gecko_ver/wine-gecko-$gecko_ver-src.tar.xz" \
+               "https://github.com/madewokherd/xalia/archive/refs/tags/xalia-$xalia_ver.tar.gz"; do
+        echo "    $url"
+        curl -fsSL --retry 3 -o "$sources_dir/downloads/$(basename "$url")" "$url"
+    done
+    for a in "$sources_dir"/downloads/wine-mono-*-src.tar.xz "$sources_dir"/downloads/wine-gecko-*-src.tar.xz \
+             "$sources_dir"/downloads/xalia-*.tar.gz; do
+        extract_licenses "$a" "$licenses/downloaded/$(basename "$a")"
+    done
+    ls -l "$sources_dir" "$sources_dir/downloads"
+fi
+echo "    licenses/: $(find "$licenses" -type f | wc -l) files"
 
 {
     echo "component: proton"
