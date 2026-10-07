@@ -208,3 +208,12 @@ The scripts and tools in this repository are under the [MIT license](LICENSE). T
 components are under the licenses of their projects: Wine is LGPL 2.1 or later (the patched Wine sources are
 published with every release), Proton's own files are under its BSD-style license, Mesa is MIT. Each release
 archive contains the corresponding license files.
+
+## Trademarks
+
+World of Warcraft, Warcraft, Battle.net and Blizzard Entertainment are trademarks or registered trademarks of
+Blizzard Entertainment, Inc. in the U.S. and/or other countries. Steam, Steam Frame, Proton and Valve are
+trademarks and/or registered trademarks of Valve Corporation in the U.S. and/or other countries. Adreno is a
+trademark of Qualcomm Incorporated. Vulkan is a registered trademark of the Khronos Group Inc. All other
+trademarks are the property of their respective owners. These names are used only to describe what this project
+is compatible with. This project is not affiliated with, sponsored or endorsed by any of these companies.
