@@ -51,7 +51,8 @@ jobs:
       - name: Disk space before cleanup
         run: df -h
 
-      # The Proton build needs about 25 GB for its tree plus the SDK image and outputs.
+      # The Proton build needs about 25 GB for its tree plus the SDK image and outputs. The ARM64 runner had
+      # 108 GB free (145 GB disk) in October 2026, so this is only a safety margin; it takes about 25 s.
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache \
@@ -65,6 +66,7 @@ jobs:
         run: |
           # The filesystem with the most free space (some runner images have a large /mnt).
           best="$({ df --output=avail,target -B1M / /mnt 2>/dev/null || true; } | tail -n +2 | sort -n | tail -n 1 | awk '{print $2}')"
+          best="${best%/}"
           sudo mkdir -p "$best/frame-build"
           sudo chown "$(id -u):$(id -g)" "$best/frame-build"
           echo "WORK=$best/frame-build" >> "$GITHUB_ENV"
