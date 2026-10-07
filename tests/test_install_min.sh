@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Test of install-min.sh in a fake $HOME with fake release files and synthetic Steam files.
-# Usage: tests/test_install_min.sh
+# Test of install-min.sh and uninstall-min.sh in a fake $HOME with fake release files and synthetic
+# Steam files (built by tests/vdf.py). Usage: tests/test_install_min.sh
 
 set -euo pipefail
 
@@ -17,9 +17,14 @@ ok() {
 }
 
 VERSION="$(sed -n 's/^VER=//p' "$REPO_ROOT/install-min.sh")"
-WOW_APPID=3000964086
 
-# Fake release files, named for the version install-min.sh expects
+# py [args] <<'EOF' ... EOF: python with tests/vdf.py importable as "vdf"
+py() {
+    PYTHONPATH="$REPO_ROOT/tests" python3 - "$@"
+}
+
+# --- Fake release files, named for the version install-min.sh expects ---------------------------
+
 out="$T/out"
 mkdir -p "$out/proton/proton-frame-fixes" "$out/turnip"
 echo '#!/usr/bin/env python3' > "$out/proton/proton-frame-fixes/proton"
@@ -31,53 +36,89 @@ echo "license" > "$out/turnip/LICENSE"
 echo "component: turnip" > "$out/turnip/BUILDINFO"
 "$REPO_ROOT/scripts/package.sh" --version "$VERSION" --out-dir "$out" --dist-dir "$T/dist" --no-wine-src >/dev/null 2>&1 \
     || fail "package.sh failed"
+cmp -s "$REPO_ROOT/install-min.sh" "$T/dist/install-min.sh" || fail "packaged install-min.sh differs"
+[[ -x "$T/dist/uninstall-min.sh" ]] || fail "uninstall-min.sh not packaged"
+(cd "$T/dist" && sha256sum -c --quiet SHA256SUMS) || fail "SHA256SUMS"
+ok "package.sh publishes the archives, install-min.sh and uninstall-min.sh"
+
+# --- Fake home with Steam files ------------------------------------------------------------------
 
 H="$T/home"
 STEAM="$H/.local/share/Steam"
+DATA="$H/.local/share/steam-frame-fixes"
+ICD="$DATA/turnip/freedreno_icd.aarch64.json"
 mkdir -p "$STEAM/userdata/1234/config" "$STEAM/userdata/5678/config" "$STEAM/config"
-python3 - "$STEAM" "$WOW_APPID" <<EOF
-import sys
-sys.path.insert(0, "$REPO_ROOT/tools/tests")
-import test_steam_shortcuts as t
-steam, wow = sys.argv[1], sys.argv[2]
-data = t.sample_shortcuts().replace(b"World of Warcraft Classic Beta (ARM64)", b"WoW Forever")
-open(steam + "/userdata/1234/config/shortcuts.vdf", "wb").write(data)
-open(steam + "/userdata/5678/config/shortcuts.vdf", "wb").write(t.m("shortcuts") + b"\x08")
-open(steam + "/config/config.vdf", "w").write(t.CONFIG_VDF.replace("2343328086", wow))
+py "$STEAM" <<'EOF'
+import sys, vdf
+steam = sys.argv[1]
+open(steam + "/userdata/1234/config/shortcuts.vdf", "wb").write(vdf.sample_shortcuts())
+open(steam + "/userdata/5678/config/shortcuts.vdf", "wb").write(vdf.empty_shortcuts())
+open(steam + "/config/config.vdf", "w").write(vdf.CONFIG_VDF)
 EOF
 cp "$STEAM/userdata/5678/config/shortcuts.vdf" "$T/other.orig"
 
 run_min() {
-    (cd "$T/dist" && HOME="$H" bash "$REPO_ROOT/install-min.sh")
+    (cd "$T/dist" && HOME="$H" bash "$T/dist/install-min.sh")
 }
 
-check() {
-    python3 - "$STEAM" "$H/.local/share/steam-frame-fixes" "$WOW_APPID" <<EOF
-import json, sys
-sys.path.insert(0, "$REPO_ROOT/tools")
-import steam_shortcuts as ss
-steam, data, wow = sys.argv[1], sys.argv[2], int(sys.argv[3])
-icd = data + "/turnip/freedreno_icd.aarch64.json"
+check_installed() {
+    py "$STEAM" "$ICD" "$DATA" <<'EOF'
+import json, sys, vdf
+steam, icd, data = sys.argv[1:]
 assert json.load(open(icd))["ICD"]["library_path"] == data + "/turnip/libvulkan_freedreno.so"
-sc = {s.name: s for s in ss.shortcuts_of(ss.parse_binary_vdf(open(steam + "/userdata/1234/config/shortcuts.vdf", "rb").read()))}
-assert sc["WoW Forever"].launch_options == f"VK_ICD_FILENAMES={icd} VK_DRIVER_FILES={icd} %command%", sc["WoW Forever"].launch_options
-assert sc["Battle.net"].launch_options == "" and sc["Gra żółw"].launch_options == "-windowed"
-mapping = ss._steam_node(ss.parse_text_vdf(open(steam + "/config/config.vdf").read())).child("CompatToolMapping")
-entries = [c for c in mapping.value if c.key == str(wow)]
-assert len(entries) == 1 and entries[0].child("name").value == "proton_frame_fixes", [c.key for c in mapping.value]
-assert mapping.child("0").child("name").value == "proton_experimental"
+sc = vdf.read_shortcuts(steam + "/userdata/1234/config/shortcuts.vdf")
+assert sc["WoW Forever"]["LaunchOptions"] == f"VK_ICD_FILENAMES={icd} VK_DRIVER_FILES={icd} %command%", sc["WoW Forever"]
+assert sc["Battle.net"]["LaunchOptions"] == "" and sc["Gra żółw"]["LaunchOptions"] == "-windowed"
+mapping = vdf.compat_mapping(steam + "/config/config.vdf")
+assert mapping[str(vdf.WOW_APPID)]["name"] == "proton_frame_fixes", mapping
+assert mapping["0"]["name"] == "proton_experimental"
+assert open(steam + "/config/config.vdf").read().count(f'"{vdf.WOW_APPID}"') == 1
 EOF
 }
 
+# --- install-min.sh ------------------------------------------------------------------------------
+
 run_min > "$T/log" 2>&1 || { cat "$T/log"; fail "install-min.sh"; }
 [[ -f "$STEAM/compatibilitytools.d/proton-frame-fixes/proton" ]] || fail "Proton not installed"
-check || fail "Steam files"
+check_installed || fail "Steam files after install"
 cmp -s "$T/other.orig" "$STEAM/userdata/5678/config/shortcuts.vdf" || fail "other user's shortcuts changed"
+grep -q "Restart Steam" "$T/log" || fail "no restart message"
 ok "installs Proton and Turnip and sets up the shortcut named \"WoW Forever\""
 
 run_min > "$T/log" 2>&1 || { cat "$T/log"; fail "second run"; }
-check || fail "Steam files after the second run"
+check_installed || fail "Steam files after the second run"
 ok "running it again gives the same result"
+
+# --- uninstall-min.sh: the user added PROTON_LOG=1 and renamed the shortcut ---------------------
+
+py "$STEAM/userdata/1234/config/shortcuts.vdf" <<'EOF'
+import sys
+p = sys.argv[1]
+d = open(p, "rb").read()
+d = d.replace(b"VK_ICD_FILENAMES=", b"PROTON_LOG=1 VK_ICD_FILENAMES=", 1).replace(b"WoW Forever", b"My WoW")
+open(p, "wb").write(d)
+EOF
+HOME="$H" bash "$T/dist/uninstall-min.sh" > "$T/log" 2>&1 || { cat "$T/log"; fail "uninstall-min.sh"; }
+[[ ! -e "$STEAM/compatibilitytools.d/proton-frame-fixes" && ! -e "$DATA" ]] || fail "files left after uninstall"
+py "$STEAM" <<'EOF' || fail "Steam files after uninstall"
+import sys, vdf
+steam = sys.argv[1]
+sc = vdf.read_shortcuts(steam + "/userdata/1234/config/shortcuts.vdf")
+assert sc["My WoW"]["LaunchOptions"] == "PROTON_LOG=1 %command%", sc["My WoW"]
+assert sc["Battle.net"]["LaunchOptions"] == "" and sc["Gra żółw"]["LaunchOptions"] == "-windowed"
+assert list(vdf.compat_mapping(steam + "/config/config.vdf")) == ["0"]
+assert "proton_frame_fixes" not in open(steam + "/config/config.vdf").read()
+EOF
+grep -q "Restart Steam" "$T/log" || fail "no restart message"
+cmp -s "$T/other.orig" "$STEAM/userdata/5678/config/shortcuts.vdf" || fail "other user's shortcuts changed"
+ok "uninstall-min.sh removes the files, our launch options (also after a rename) and the Proton mapping"
+
+cp "$STEAM/config/config.vdf" "$T/config.after"
+HOME="$H" bash "$T/dist/uninstall-min.sh" > "$T/log" 2>&1 || fail "second uninstall"
+cmp -s "$T/config.after" "$STEAM/config/config.vdf" || fail "second uninstall changed config.vdf"
+ok "uninstall-min.sh can run again"
+
+# --- No shortcut named "WoW Forever" -------------------------------------------------------------
 
 cp "$T/other.orig" "$STEAM/userdata/1234/config/shortcuts.vdf"
 if run_min > "$T/log" 2>&1; then
@@ -86,4 +127,4 @@ fi
 grep -q 'No non-Steam shortcut named "WoW Forever"' "$T/log" || fail "no missing-shortcut message"
 ok "explains a missing \"WoW Forever\" shortcut"
 
-echo "All install-min.sh tests passed."
+echo "All tests passed."

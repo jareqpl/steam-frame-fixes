@@ -8,7 +8,7 @@ This repository provides:
 - **Proton Experimental ARM64 (Frame fixes)**: Valve's Proton Experimental for ARM64 with one Wine patch,
   installed as a Steam compatibility tool,
 - **Turnip**: the Mesa Vulkan driver for Adreno GPUs built from upstream Mesa with two small patches,
-- **`install.sh`**: a one-command installer for Steam Frame (desktop mode).
+- **`install-min.sh`** / **`uninstall-min.sh`**: one-command setup and removal on Steam Frame (desktop mode).
 
 Everything is built from source by GitHub Actions, see [Building from source](#building-from-source).
 
@@ -42,69 +42,48 @@ Reports and patches for the upstream projects are drafted in [UPSTREAM.md](UPSTR
 
 ## Installation
 
-In desktop mode, open a terminal and run:
-
-```bash
-curl -LO https://github.com/jareqpl/steam-frame-fixes/releases/latest/download/install.sh
-bash install.sh
-```
-
-The installer downloads the latest release, verifies its SHA-256 checksums and installs:
-
-- Proton into `~/.local/share/Steam/compatibilitytools.d/proton-frame-fixes/`,
-- Turnip into `~/.local/share/steam-frame-fixes/turnip/`.
-
-It then prints the remaining steps:
-
-1. **Restart Steam.**
-2. In the game's shortcut, open **Properties > Compatibility**, enable *Force the use of a specific Steam Play
-   compatibility tool* and select **Proton Experimental ARM64 (Frame fixes)**.
-3. In **Properties > General > Launch options**, enter exactly the line the installer printed, for example:
-
-   ```
-   VK_ICD_FILENAMES=/home/steamos/.local/share/steam-frame-fixes/turnip/freedreno_icd.aarch64.json VK_DRIVER_FILES=/home/steamos/.local/share/steam-frame-fixes/turnip/freedreno_icd.aarch64.json %command%
-   ```
-
-   Keep anything you already had there (for example `PROTON_LOG=1`) in front of `%command%`.
-
-Steps 2 and 3 can be done by the installer instead:
-
-1. In Steam, rename the game's shortcut to **`WoW Forever`** (right-click it > Properties, the name field at
-   the top).
-2. Exit Steam completely (Steam menu > Exit).
-3. Run:
+1. Add **Battle.net** (or the game's ARM64 executable) to Steam as a non-Steam game, see
+   [Game setup](#game-setup).
+2. Rename that shortcut to exactly **`WoW Forever`** (right-click it > Properties, the name field at the top).
+3. From the [latest release](https://github.com/jareqpl/steam-frame-fixes/releases), download
+   `install-min.sh`, `proton-frame-<version>.tar.xz` and `turnip-frame-<version>.tar.xz` into one folder.
+4. In desktop mode, open a terminal in that folder and run:
 
    ```bash
-   bash ~/.local/share/steam-frame-fixes/install.sh --set-compat-tool --set-launch-options
+   bash install-min.sh
    ```
 
-It changes only the non-Steam shortcut with exactly that name (not case-sensitive), shows the changes and asks
-before writing. A backup of each changed Steam file is kept next to it. To use another name, add
-`--shortcut-name "Your Name"`. Renaming the shortcut afterwards is fine: `--uninstall` remembers which
-shortcut it changed.
+5. **Restart Steam** and launch `WoW Forever`.
 
-Other options:
+`install-min.sh` uses the archives next to it, or downloads them from the release if they are missing. It:
 
-| Command | What it does |
-|---|---|
-| `bash install.sh --version TAG` | install a specific release |
-| `bash install.sh --from-dir DIR` | install from release files you downloaded yourself |
-| `bash ~/.local/share/steam-frame-fixes/install.sh --doctor` | show the installation state and which Vulkan driver the last game run used |
-| `bash ~/.local/share/steam-frame-fixes/install.sh --uninstall` | remove everything and undo the shortcut changes |
+- unpacks Proton into `~/.local/share/Steam/compatibilitytools.d/proton-frame-fixes/`,
+- unpacks Turnip into `~/.local/share/steam-frame-fixes/turnip/` and writes its Vulkan ICD file,
+- sets the launch options of the `WoW Forever` shortcut to
 
-Running `install.sh` again updates to the latest release.
+  ```
+  VK_ICD_FILENAMES=/home/<user>/.local/share/steam-frame-fixes/turnip/freedreno_icd.aarch64.json VK_DRIVER_FILES=/home/<user>/.local/share/steam-frame-fixes/turnip/freedreno_icd.aarch64.json %command%
+  ```
 
-### Minimal variant
+  (replacing what was there; add `PROTON_LOG=1` in front again if you need logs),
+- selects **Proton Experimental ARM64 (Frame fixes)** as its compatibility tool.
 
-[`install-min.sh`](install-min.sh) does only what is needed to start the game, for a non-Steam shortcut named
-exactly `WoW Forever`: it unpacks Proton and Turnip, writes the driver's ICD file, replaces the shortcut's
-launch options and selects the Frame fixes Proton for it. Restart Steam afterwards. It has no checksum verification, no
-backups, no uninstaller and installs the release named in its `VER=` line. Run it next to the downloaded
-release files (or let it download them):
+Steam does not need to be closed; the changes are picked up after the restart (tested on Steam Frame).
+The script does not verify checksums (compare with `SHA256SUMS` yourself if you want) and makes no backups.
+
+To set it up by hand instead, use the same two settings in the shortcut's Properties: Compatibility > force
+*Proton Experimental ARM64 (Frame fixes)*, and General > Launch options as above.
+
+### Uninstalling
+
+Download `uninstall-min.sh` from the release and run it, then restart Steam:
 
 ```bash
-bash install-min.sh
+bash uninstall-min.sh
 ```
+
+It removes both installed folders, our variables from the launch options of any shortcut that uses them (also
+if it was renamed) and the compatibility tool mappings to the Frame fixes Proton.
 
 ### Why the launch options?
 
@@ -118,17 +97,16 @@ driver of every game and show two Adreno 750 devices.
 
 ## Game setup
 
-<!-- TODO(author): confirm the exact login flow and the steps below on a clean prefix. -->
+<!-- TODO(author): confirm the exact login flow on a clean prefix. -->
 
 1. Install Battle.net (x86) as a non-Steam game with Proton, in its own prefix, and install
    World of Warcraft with it.
-2. Add the **ARM64 executable** of the game as a separate non-Steam game. For World of Warcraft: Forever
-   (beta) it is `_classic_beta_/WowB-ARM64.exe` in the game folder. Other variants have similar names
-   (e.g. `Wow-ARM64.exe`).
+2. Name the shortcut that starts the game `WoW Forever` and run `install-min.sh` (see
+   [Installation](#installation)). This can be the **Battle.net** shortcut itself (tested on Steam Frame) or a
+   separate non-Steam shortcut to the game's **ARM64 executable**: for World of Warcraft: Forever (beta)
+   `_classic_beta_/WowB-ARM64.exe` in the game folder; other variants have similar names (e.g. `Wow-ARM64.exe`).
    <!-- TODO(author): exact executable names of the other WoW variants. Reports welcome. -->
-3. Name that shortcut `WoW Forever` and set the compatibility tool and launch options as described in
-   [Installation](#installation) (by hand, or with `--set-compat-tool --set-launch-options`).
-4. Started without Battle.net, the game first shows a language and region selection window.
+3. Started directly (without Battle.net), the game first shows a language and region selection window.
 
 <!-- TODO(author): is a Config.wtf copied from a PC needed? Believed not, but not verified on a clean prefix. -->
 
@@ -142,15 +120,18 @@ python3 -c "import sys;d=open(sys.argv[1],'rb').read();print(d.count(bytes.fromh
   ~/.local/share/Steam/steamapps/compatdata/<appid>/pfx/drive_c/windows/system32/ntdll.dll
 ```
 
-It prints several hundred with the fix and `0` without it. `install.sh --doctor` does this for shortcuts set
-up with `--set-compat-tool`.
+It prints several hundred with the fix and `0` without it.
 
 ## Troubleshooting
 
 1. Add `PROTON_LOG=1` to the launch options, in front of the other variables, and start the game. Proton
    writes `~/steam-<appid>.log`.
-2. Run `bash ~/.local/share/steam-frame-fixes/install.sh --doctor`. It reads the newest logs and tells you
-   which driver was used:
+2. Check which Vulkan driver was used:
+
+   ```bash
+   grep -h 'with driver:' ~/steam-*.log | tail -n 3
+   ```
+
    - `Using "Turnip Adreno (TM) 750" with driver: "/home/.../steam-frame-fixes/turnip/libvulkan_freedreno.so"`
      means this driver is used,
    - `... with driver: "/run/host/usr/lib/libvulkan_freedreno.so"` means the **system** driver is used: the
@@ -164,9 +145,9 @@ up with `--set-compat-tool`.
 
 - Releases are built from source by [GitHub Actions](.github/workflows/build.yml); the build logs are public.
 - All patches are in [`patches/`](patches) and are small enough to review.
-- `install.sh` verifies every download against `SHA256SUMS` before installing anything.
-- Nothing modifies game files. Steam settings are only changed when you ask for it, after a backup, and
-  `--uninstall` undoes those changes.
+- Every release lists the SHA-256 checksums of its files in `SHA256SUMS` (`sha256sum -c SHA256SUMS`).
+- Nothing modifies game files. `install-min.sh` only changes the launch options and the compatibility tool of
+  the `WoW Forever` shortcut, and `uninstall-min.sh` removes those changes.
 
 ## Building from source
 
@@ -198,7 +179,7 @@ Pinned versions:
 | Mesa | [`e3a986f0167aa7d1c5cfd62a63362c65f5339373`](https://gitlab.freedesktop.org/mesa/mesa/-/commit/e3a986f0167aa7d1c5cfd62a63362c65f5339373) |
 | Steam Runtime SDK | `steamrt4/sdk/arm64-llvm:4.0.20260714.251823-0` |
 
-Tests: `python3 -m unittest discover -s tools/tests`, `tests/test_install.sh` and `tests/test_install_min.sh`.
+Tests: `tests/test_install_min.sh` (no ARM64 or Steam needed) and `scripts/check-patches.sh`.
 
 ## Credits
 

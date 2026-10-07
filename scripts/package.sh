@@ -13,8 +13,8 @@
 #   proton-frame-<ver>.tar.xz           out/proton/proton-frame-fixes/ (+ BUILDINFO)
 #   turnip-frame-<ver>.tar.xz           out/turnip/ as turnip/
 #   wine-src-<commit>-patched.tar.xz    Wine sources with patches/wine applied (LGPL compliance)
-#   install.sh                          the installer from this repository
-#   steam_shortcuts.py                  helper used by install.sh to edit Steam shortcuts
+#   install-min.sh                      minimal installer (its VER= line set to this version)
+#   uninstall-min.sh                    removes what install-min.sh installed
 #   SHA256SUMS
 
 set -euo pipefail
@@ -132,11 +132,12 @@ fi
 
 # --- Installer and checksums -------------------------------------------------------------------
 
-if [[ -f "$REPO_ROOT/install.sh" ]]; then
-    install -m 0755 "$REPO_ROOT/install.sh" "$dist_dir/install.sh"
-    install -m 0755 "$REPO_ROOT/tools/steam_shortcuts.py" "$dist_dir/steam_shortcuts.py"
-    assets+=(install.sh steam_shortcuts.py)
-fi
+# Releases carry the minimal install and uninstall scripts.
+sed "s/^VER=.*/VER=$version/" "$REPO_ROOT/install-min.sh" > "$dist_dir/install-min.sh"
+grep -qx "VER=$version" "$dist_dir/install-min.sh" || die "could not set VER= in install-min.sh"
+install -m 0755 "$REPO_ROOT/uninstall-min.sh" "$dist_dir/uninstall-min.sh"
+chmod 0755 "$dist_dir/install-min.sh"
+assets+=(install-min.sh uninstall-min.sh)
 
 [[ ${#assets[@]} -gt 0 ]] || die "nothing to package"
 
