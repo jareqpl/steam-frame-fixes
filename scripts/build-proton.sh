@@ -269,8 +269,10 @@ if [[ $sources -eq 1 ]]; then
     sources_dir="$out_dir/sources"
     rm -rf "$sources_dir"
     mkdir -p "$sources_dir/downloads"
-    # Proton with all submodules, as built (Wine patch applied)
-    tar -C "$src" --exclude=.git --sort=name --owner=0 --group=0 --numeric-owner \
+    # Proton with all submodules, as built (Wine patch applied, including the sources that meson
+    # downloaded into the tree during the build). contrib/ only holds the downloaded prebuilt
+    # binaries (wine-mono, wine-gecko, xalia), whose sources are added separately below.
+    tar -C "$src" --exclude=.git --exclude=./contrib --sort=name --owner=0 --group=0 --numeric-owner \
         --transform "s|^\.|proton-$PROTON_TAG|" -cf - . \
         | xz -T0 -6 > "$sources_dir/proton-source.tar.xz"
     # Source archives downloaded by the build (the prebuilt binaries are not sources)
