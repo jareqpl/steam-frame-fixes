@@ -46,8 +46,6 @@ compiles them fine (tested with all 144 combinations of MSAA, sample shading, pi
 versus 144 crashes with the system driver). The [two Mesa patches](patches/mesa) add a NULL check that turns
 such a failure into an error instead of a crash, and log which compiler stage failed.
 
-Reports and patches for the upstream projects are drafted in [UPSTREAM.md](UPSTREAM.md).
-
 ## Requirements
 
 - Steam Frame (SteamOS), in desktop mode with a terminal,
