@@ -10,10 +10,24 @@ This repository provides:
 - **Turnip**: the Mesa Vulkan driver for Adreno GPUs built from upstream Mesa with two small patches,
 - **`install-min.sh`** / **`uninstall-min.sh`**: one-command setup and removal on Steam Frame (desktop mode).
 
-Everything is built from source by GitHub Actions, see [Building from source](#building-from-source).
+Everything is built from source, see [Building from source](#building-from-source).
 
-> This is not affiliated with or endorsed by Valve, Blizzard, the Wine project or Mesa.
-> Blizzard does not support Linux or Wine. You use this at your own risk.
+> **Use at your own risk.** Please read the [disclaimer](#disclaimer) before installing.
+
+## Disclaimer
+
+This is an unofficial, experimental community project. It is not affiliated with or endorsed by Valve,
+Blizzard Entertainment, the Wine project or Mesa, and Blizzard does not support playing its games on Linux,
+Wine or Proton.
+
+**You use this software entirely at your own risk.** It is provided "as is", without warranty of any kind
+(see the [license](LICENSE)). The author is not responsible for any damage or loss it may cause, including
+to your device, your Steam installation, your game data or your game account.
+
+**This software was developed with heavy use of AI.** The analysis, the patches, the build scripts, the
+installer and this documentation were largely written with the help of an AI assistant (Claude, by
+Anthropic) and tested by a human on a real Steam Frame. Treat it accordingly: read the
+scripts before running them, and report anything that looks wrong.
 
 ## What is fixed
 
